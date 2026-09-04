@@ -26,3 +26,18 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Local database (created at runtime by init_db)
+*.db
+*.sqlite3
+
+# Local run artifacts
+server_log.txt
+server_pid.txt
+
+# Editor
+.vscode/
