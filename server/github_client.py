@@ -59,15 +59,3 @@ async def update_github_issue(issue_number: int, payload: Dict[str, Any]) -> htt
                 body = resp.text
             print(f"[github_client.update_github_issue] status={resp.status_code}, body={body}")
         return resp
-
-# [추가] 의미가 명확한 '은폐' 전용 함수
-async def close_github_issue(issue_number: int) -> httpx.Response:
-    """특정 게시글을 은폐(이슈 닫기) 처리합니다."""
-    resp = await update_github_issue(issue_number, {"state": "closed"})
-    if resp.status_code not in (200, 201):
-        try:
-            body = resp.json()
-        except Exception:
-            body = resp.text
-        print(f"[github_client.close_github_issue] status={resp.status_code}, body={body}")
-    return resp
