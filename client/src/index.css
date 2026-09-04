@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #fff;
+  --text: #1f2937;
+
+  background-color: var(--bg);
+  color: var(--text);
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --text: #f3f4f6;
+  }
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+@layer base {
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+}
