@@ -26,7 +26,7 @@ export const getPosts = async (): Promise<PostRecord[]> => {
       id: number;
       title: string;
       content: string;
-      author_id: number;
+      author_id: string;
     }) => ({
       id: issue.id,
       title: issue.title,
