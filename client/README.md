@@ -1,41 +1,68 @@
-# n_n - Client
+# n_n — Client
 
-익명 게시판 서비스 **n_n**의 프론트엔드 프로젝트입니다. GitHub Issues를 백엔드 저장소로 활용합니다.
+익명 게시판 **n_n** 의 프론트엔드입니다.
+프로젝트의 배경과 결론은 [루트 README](../README.md) 를 참고하세요.
 
-## 🛠 Tech Stack
+## Tech Stack
 
-- **Framework**: React 18 (Vite)
+- **Framework**: React 19 (Vite 8)
+- **Server State**: TanStack Query v5
+- **Form**: React Hook Form + Zod
+- **HTTP**: Axios
 - **Styling**: Tailwind CSS v4
-- **State Management**: TanStack Query (React Query) v5
-- **Form Management**: React Hook Form
-- **Validation**: Zod
-- **API Client**: Axios
+- **Lint/Format**: Biome
 
-## 🏗 Architecture & Key Features
+## 구조
 
-### 1. 선언적 서버 상태 관리 (TanStack Query)
-- `useQuery`와 `useMutation`을 활용하여 비동기 데이터 흐름을 관리합니다.
-- **Infinite Scroll**: `useInfiniteQuery`와 `react-intersection-observer`를 결합하여 대량의 게시글을 효율적으로 로드합니다.
-- **Hybrid Sync**: GitHub API의 인덱싱 지연 문제를 해결하기 위해 백엔드와 협력하여 실시간성을 보장하는 필터링 로직을 구현했습니다.
+```
+src/
+├── api/issue-service.ts     서버 호출 (생성 / 목록 / 삭제)
+├── hooks/use-posts.ts       useQuery + useMutation, 낙관적 업데이트
+├── components/
+│   ├── main-content.tsx     화면 조립, 모달 상태
+│   ├── post-form.tsx        Zod 스키마 검증이 붙은 글쓰기 폼
+│   ├── post-card.tsx        게시글 한 건
+│   ├── delete-modal.tsx     삭제 시 비밀번호 확인
+│   └── error-boundary.tsx   렌더 예외 격리
+├── constants/messages.ts    성공 메시지 모음
+└── types/index.ts           PostRecord
+```
 
-### 2. 관심사의 분리 (Component Refactoring)
-비대했던 단일 컴포넌트를 기능 단위로 분리하여 가독성과 재사용성을 높였습니다:
-- `PostForm`: Zod 스키마 기반의 유효성 검사가 적용된 글쓰기 폼.
-- `PostCard`: 게시글 렌더링 및 익명 ID(IP Hash) 표시 로직.
-- `DeleteModal`: 삭제 시 비밀번호 검증을 위한 전용 모달.
+## 눈여겨볼 부분
 
-### 3. 고성능 폼 유효성 검사 (React Hook Form + Zod)
-- **비제어 컴포넌트**: 리렌더링 최적화를 위해 React Hook Form을 사용합니다.
-- **Schema Validation**: Zod를 통해 제목(2-20자), 내용(5-2000자), 비밀번호(4-20자)에 대한 엄격한 규칙을 적용했습니다.
+### 낙관적 업데이트 ([`use-posts.ts`](src/hooks/use-posts.ts))
 
-### 4. 반응형 디자인 & UX
-- **Tailwind v4**: CSS-first 방식의 최신 Tailwind를 사용하여 스타일링했습니다.
-- **Responsive Layout**: 모바일 화면에서도 버튼이 튀어나가지 않도록 반응형 UI를 제공합니다.
-- **Real-time Feedback**: 게시/삭제 작업 시 각각 독립적인 로딩 상태(`isAdding`, `isRemoving`)를 UI에 반영합니다.
+글을 쓰면 서버 응답을 기다리지 않고 목록에 먼저 그립니다.
+`onMutate` 에서 진행 중인 쿼리를 취소하고 이전 캐시를 스냅샷으로 잡아둔 뒤,
+실패하면 `onError` 에서 되돌리고 `onSettled` 에서 무효화합니다.
 
-## 🚀 Getting Started
+GitHub 목록 API 의 인덱싱 지연 때문에 낙관적 업데이트만으로는 부족했고,
+서버 쪽에서 목록의 원천을 바꿔야 했습니다. 자세한 내용은 루트 README 의
+'인덱싱 지연' 절에 있습니다.
 
-### Installation
+### 작업별 로딩 상태
+
+`isFetching` / `isAdding` / `isRemoving` 을 뮤테이션별로 분리해서 내려보내
+게시 버튼과 삭제 버튼이 서로의 로딩에 영향받지 않게 했습니다.
+
+### 스키마 기반 검증 ([`post-form.tsx`](src/components/post-form.tsx))
+
+제목 2–20자, 내용 5–2000자, 비밀번호 4–20자를 Zod 스키마로 정의하고
+`zodResolver` 로 React Hook Form 에 연결했습니다.
+
+## 실행
+
 ```bash
-cd client
 npm install
+npm run dev
+```
+
+서버가 `http://localhost:8000` 에 떠 있어야 합니다.
+다른 주소를 쓰려면 `VITE_API_BASE_URL` 을 설정하세요.
+
+## 미구현
+
+- 수정 UI (서버에는 `PATCH /update_issue` 가 있습니다)
+- 페이지네이션 / 무한 스크롤 — 목록은 최근 10개까지만 옵니다
+- 테스트
+- `alert()` 대신 토스트

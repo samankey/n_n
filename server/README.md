@@ -1,60 +1,94 @@
-# 🌲 n_n - Server Side Work Summary
+# n_n — Server
 
-이 문서는 GitHub Issues와 SQLite를 결합한 하이브리드 익명 게시판 시스템인 **n_n**의 백엔드 구현 사항을 정리합니다.
+익명 게시판 **n_n** 의 백엔드입니다.
+이 서버가 왜 생겼는지는 [루트 README](../README.md) 에 정리해 두었습니다.
+요약하면 클라이언트만으로는 (1) 저장소 쓰기 토큰을 숨길 수 없고
+(2) 비밀번호를 검증할 수 없고 (3) 요청자 IP 를 알 수 없기 때문입니다.
 
-## 1. 개요 (Overview)
-- **목적**: 사내 구성원을 위한 철저한 익명 게시판 서비스 구축
-- **핵심 아키텍처**:
-    - **콘텐츠 저장소**: GitHub Issues (인프라 비용 절감 및 공개 게시판 활용)
-    - **메타데이터 저장소**: SQLite (보안 식별자, 신고 횟수 등 민감 데이터 관리)
+## Tech Stack
 
-## 2. 기술 스택 (Tech Stack)
-- **Framework**: FastAPI (Asynchronous API Framework)
-- **ORM**: SQLModel (SQLAlchemy + Pydantic 기반 최신 ORM)
-- **Database**: SQLite (로컬 파일 기반 관계형 데이터베이스)
-- **HTTP Client**: httpx (비비동기 GitHub API 통신)
-- **Security**: hashlib (SHA-256 기반 익명 식별자 및 비밀번호 해싱)
+- **Framework**: FastAPI
+- **ORM**: SQLModel (SQLAlchemy + Pydantic)
+- **DB**: SQLite
+- **HTTP Client**: httpx (비동기)
+- **Password Hashing**: bcrypt
 
-## 3. 주요 구현 사항 (Key Features)
+## 역할 분리
 
-### 🛡️ 보안 및 익명성 (Security & Anonymity)
-- **IP 해싱**: 사용자의 실 IP 주소를 서버만 알고 있는 `SECRET_SALT`와 조합하여 해싱함으로써 비가역적인 익명 ID(`ip_hash`)를 생성합니다.
-- **비밀번호 해싱**: 게시글 수정 및 삭제 시 본인 확인을 위해 입력받은 비밀번호를 해싱하여 저장(`pwd_hash`)하며, 원본 비밀번호는 서버에 보관하지 않습니다.
+| 모듈 | 책임 |
+|---|---|
+| `main.py` | 라우팅과 흐름 제어 |
+| `security.py` | 비밀번호 해싱·검증, 표시용 ID 발급, IP 해싱 |
+| `github_client.py` | GitHub Issues API 비동기 클라이언트 |
+| `models.py` | `PostMetadata` 테이블 정의 |
+| `schemas.py` | 요청 본문 검증 (Pydantic) |
+| `database.py` | 엔진과 세션 |
+| `config.py` | 환경변수 로딩 및 누락 시 즉시 실패 |
 
-### 🏗️ 하이브리드 데이터 모델링 (Hybrid Data Modeling)
-- **PostMetadata**:
-    - `issue_number`: GitHub 이슈 번호와 로컬 DB를 연결하는 외래 키 역할
-    - `ip_hash`: 도배 방지 및 시스템 추적용 식별자
-    - `pwd_hash`: 수정/삭제 권한 검증용 해시값
-    - `report_count`: 자율 정화 시스템을 위한 신고 누적 횟수 관리
+## 데이터 분리
 
-### 🔌 API 엔드포인트 (API Endpoints)
-- **`POST /post_issue`**: GitHub 이슈를 생성하고 동시에 로컬 DB에 관리용 메타데이터를 기록합니다.
-- **`GET /posts`**: GitHub API를 통해 현재 열려 있는(`open`) 익명 게시글 목록을 조회합니다.
-- **`PATCH /update_issue/{issue_number}`**: 입력된 비밀번호 해시가 DB의 `pwd_hash`와 일치할 경우에만 게시글을 수정합니다.
-- **`POST /delete_issue/{issue_number}`**: 비밀번호 검증 후 GitHub 이슈를 `closed` 상태로 변경하여 서비스 상에서 '은폐' 처리합니다.
+본문은 GitHub Issues 에, 공개되면 안 되는 값만 로컬 DB 에 둡니다.
 
-## 4. 코드 구조화 및 리팩토링 (Refactoring)
-- **관심사 분리 (SoC)**: 코드의 가독성과 유지보수성을 높이기 위해 모듈을 분리했습니다.
-    - `main.py`: API 라우팅 및 비즈니스 로직 제어
-    - `github_client.py`: GitHub API 통신 전용 비동기 클라이언트
-    - `database.py` / `models.py`: DB 엔진 설정 및 테이블 스키마 정의
-    - `schemas.py`: Pydantic을 이용한 요청 데이터 검증(Validation) 정의
-- **Lifespan 핸들러**: FastAPI의 최신 권장 방식인 `lifespan`을 사용하여 서버 가동 시 DB 초기화(`init_db`)를 안전하게 처리합니다.
+`PostMetadata`:
 
-## 5. 데이터베이스 구조 (Database Schema)
-현재 `anonymous_wood.db`에 생성된 `postmetadata` 테이블의 구조는 다음과 같습니다.
+| Column | Type | 설명 |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `issue_number` | INTEGER, index + **unique** | GitHub 이슈 번호. 권한 검증이 볼 행을 확정하려고 unique |
+| `author_id` | VARCHAR | 화면에 노출되는 표시용 난수 ID. 비밀번호와 무관 |
+| `password_hash` | VARCHAR | bcrypt 해시. 수정·삭제 권한 검증용 |
+| `ip_hash` | VARCHAR | 도배 방지용 요청자 식별값 (당일 한정) |
+| `is_deleted` | BOOLEAN | 로컬 숨김 여부 |
+| `created_at` | DATETIME | |
 
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| **id** | INTEGER (PK) | 고유 식별자 |
-| **issue_number** | INTEGER (Index) | GitHub 이슈 고유 번호 |
-| **ip_hash** | VARCHAR | 유저 IP 해시 (도배 방지용) |
-| **pwd_hash** | VARCHAR | 본인 확인용 비밀번호 해시 |
-| **report_count** | INTEGER | 신고 누적 횟수 (기본값 0) |
-| **created_at** | DATETIME | 생성 일시 |
-| **updated_at** | DATETIME | 수정 일시 |
+## API
 
----
+| Method | Path | 설명 |
+|---|---|---|
+| `GET` | `/posts` | 최근 게시글 목록. 인덱싱 지연을 단일 이슈 조회로 보정 |
+| `POST` | `/post_issue` | 이슈 생성 + 메타데이터 기록. `author_id` 반환 |
+| `PATCH` | `/update_issue/{n}` | 비밀번호 검증 후 제목·본문 수정 |
+| `POST` | `/delete_issue/{n}` | 비밀번호 검증 후 이슈를 `closed` 로 전환 |
 
-이 작업 사항은 현재 **3단계(DB 연동)**를 성공적으로 마친 상태이며, 이후 **4단계(Redis를 통한 Rate Limiting)**로 확장 가능한 견고한 기반을 마련했습니다.
+`/docs` 에서 스키마를 확인할 수 있습니다.
+
+## 비밀번호 검증
+
+`bcrypt.hashpw` 로 저장하고 `bcrypt.checkpw` 로 대조합니다.
+레코드마다 솔트가 다르고 work factor 를 조절할 수 있습니다.
+
+초기 구현은 `sha256(password).hexdigest()[:8]` 이었는데 두 가지가 문제였습니다.
+
+- 솔트가 없어 흔한 비밀번호는 즉시 역산됩니다 — `sha256("1234")[:8] == 03ac6742`
+- 32비트로 절단해서, 충돌하는 다른 비밀번호로도 남의 글을 지울 수 있습니다
+
+게다가 이 값을 그대로 `author_id` 로 내려보내 화면에 노출하고 있었습니다.
+지금은 표시용 ID 를 `secrets.token_hex(4)` 로 따로 발급합니다.
+
+## 실행
+
+```bash
+cat > .env <<'ENV'
+GITHUB_TOKEN=<repo 쓰기 권한 토큰>
+REPO_OWNER=<저장소 소유자>
+REPO_NAME=<이슈를 쌓을 저장소>
+SECRET_SALT=<IP 해싱용 임의 문자열>
+ENV
+
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+`SQL_ECHO=true` 를 주면 SQL 이 출력됩니다.
+SQLite 파일은 기동 시 `init_db()` 가 만들며 저장소에 커밋하지 않습니다.
+
+## 한계
+
+- **`ip_hash` 로 rate limiting 을 하지 않습니다.** 저장만 합니다
+- **익명성이 완전하지 않습니다.** `ip_hash` 가 게시글과 같은 행에 있어,
+  `SECRET_SALT` 를 아는 쪽이라면 IP 후보를 대입해 좁힐 수 있습니다
+- `request.client.host` 는 프록시 뒤에서 프록시 IP 를 가리킵니다
+- 목록이 `RECENT_POSTS_LIMIT`(10) 까지만 나옵니다
+- 스키마 변경 시 마이그레이션 도구가 없습니다 (`create_all` 만 사용)
+- 테스트가 없고 CI 는 Python 을 검사하지 않습니다
